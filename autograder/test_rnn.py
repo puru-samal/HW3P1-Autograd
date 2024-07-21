@@ -113,7 +113,17 @@ class RNNTest(Test):
         # Loop through inputs
         for t in range(time_steps):
             hx = pytorch_rnn_cell(inp[t], pytorch_hiddens[-1])
-            hx_user = user_cell(inp_user[t], user_hiddens[-1])
+
+
+             # Slice input and store in computational graph
+            idx = np.index_exp[t]
+            inp_user_slice = inp_user[idx].copy()
+            autograd.add_operation(inputs=[inp_user, np.array(idx, dtype=object)],
+                                   output=inp_user_slice, 
+                                   gradients_to_update=[None, None],
+                                   backward_operation=slice_backward)
+            hx_user = user_cell(inp_user_slice, user_hiddens[-1])
+
             pytorch_hiddens.append(hx)
             user_hiddens.append(hx_user)
             if not np.allclose(hx.detach().numpy(), hx_user, rtol=1e-03):
@@ -130,17 +140,9 @@ class RNNTest(Test):
                             gradients_to_update=[None], backward_operation=sum_backward)
         autograd.backward(1)
 
-        # NOTE: Getting input gradients
-        # NOTE: Gradients wrt to the input at each timestep is stored in the internal Autograd gradient buffer.
-        # The gradients for a particular input can be retrieved by querying the gradient buffer with the numpy.ndarray input.
-        # Since, inp_user[i] is fed into the network, the gradient with inp_user[i] gets what would be dx[i].
-        # Thus, this requires iterating through all timesteps to get the gradient wrt each timestep which are then 
-        # concatenated for comparison with pytorch's input gradient. 
-        dx = []
-        for t in range(time_steps):
-            _dx = autograd.gradient_buffer.get_param(inp_user[t])
-            dx.append(_dx)
-        dx, dx_ = np.array(dx), inp.grad.detach()
+        # NOTE: Getting input gradients is different due to interface and implementation diffrences
+        # NOTE: slice_backward must be implemented!
+        dx, dx_ = autograd.gradient_buffer.get_param(inp_user), inp.grad.detach()
 
         # NOTE: Getting hidden gradient
         # Retreived by querying the gradient bufer with the user_hiddens[0] i.e. the initial hidden state sent to the network.

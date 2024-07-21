@@ -206,14 +206,17 @@ class CTCLoss(object):
         self.BLANK = BLANK
         self.gammas = []
         self.ctc = CTC()
-        self.USE_ALT = True
+        
+        # NOTE: Toggle using ctc_loss_backward version 
+        # or a version using more primitive operations
+        self.USE_PRIMITIVE = False
         # <---------------------------------------------
 
     def __call__(self, logits, target, input_lengths, target_lengths):
 
         # No need to modify
-        if self.USE_ALT:
-            return self.forward_alternate(logits, target, input_lengths, target_lengths)
+        if self.USE_PRIMITIVE:
+            return self.forward_primitive(logits, target, input_lengths, target_lengths)
         else:
             return self.forward(logits, target, input_lengths, target_lengths)
 
@@ -302,7 +305,7 @@ class CTCLoss(object):
         
         return total_loss
     
-    def forward_alternate(self, logits, target, input_lengths, target_lengths):
+    def forward_primitive(self, logits, target, input_lengths, target_lengths):
         """CTC loss forward
 
         Computes the CTC Loss by calculating forward, backward, and
@@ -414,7 +417,9 @@ class CTCLoss(object):
             self.gammas[batch_itr] = gamma
             self.extended_symbols[batch_itr] = extended_symbols
 
-
+        # NOTE: Again, since arrays with the same views cannot be added to the gradient buffer
+        # summing the loss must be done in this manner to that the operations wrt to each
+        # element can be tracked for gradient backprop
         total_loss = [np.array([0.0], dtype=np.float64) for _ in range(B+1)]
         for i in range(B):
             total_loss[i+1] = total_loss[i] + tmp_loss[i][-1]

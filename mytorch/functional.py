@@ -91,7 +91,7 @@ def max_backward(grad_output, a):
 
 # NOTE: Required for HW3
 def sum_backward(grad_output, a):
-    """Backward of sum"""
+    """Backward of sum over axis=0 """
     a_grad = grad_output * np.ones_like(a)
     return a_grad
 
@@ -289,6 +289,20 @@ def flatten_backward(dLdZ, A):
 
 # NOTE: Required for HW3
 def expand_dims_backward(grad_output, a, axis):
+    """
+    backward for np.expand_dims(a, axis=axis)
+
+    Inputs
+    ------
+    grad_output:   Gradient from next layer
+    a:      Input
+    axis:   (!!)Encoded as np.array([int]) 
+
+    Returns
+    -------
+    a_grad, None
+    """
+    
     if a.shape != grad_output.shape:
         a_grad = np.squeeze(grad_output, axis=axis[0])
     else:
@@ -297,14 +311,43 @@ def expand_dims_backward(grad_output, a, axis):
 
 # NOTE: Required for HW3
 def squeeze_backward(grad_output, a, axis):
+    """
+    backward for np.squeeze(a, axis=axis)
+    
+    Inputs
+    ------
+    grad_output:   Gradient from next layer
+    a:      Input
+    axis:   (!!)Encoded as np.array([int]) 
+
+    Returns
+    -------
+    a_grad, None
+    """
+
     if a.shape != grad_output.shape:
-        a_grad = np.expand_dims(grad_output, axis=[0])
+        a_grad = np.expand_dims(grad_output, axis=axis[0])
     else:
         a_grad = grad_output
     return a_grad, None
 
 # NOTE: Required for HW3
 def slice_backward(grad_output, a, indices):
+    """
+    backward for np.squeeze(a, axis=axis)
+    
+    Inputs
+    ------
+    grad_output:   Gradient from next layer
+    a:         Input
+    indices:   (!!)An np.index_exp[indices] obj 
+                encoded as np.array(indices, dtype=object) 
+
+    Returns
+    -------
+    a_grad, None
+    """
+
     a_grad = np.zeros(a.shape)
     a_grad[tuple(indices)] = grad_output
     return a_grad, None
