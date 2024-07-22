@@ -15,7 +15,7 @@ class GRUCell(object):
         self.hidden_size = hidden_size
         self.autograd_engine = autograd_engine
 
-         # initialize three linear layers
+         # initialize three rnn layers
         self.r_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid)
         self.z_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid)
         self.n_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Tanh)
