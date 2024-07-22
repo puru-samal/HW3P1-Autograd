@@ -1,6 +1,6 @@
 # HW3P1-Autograd
 
-An implementation of HW3P1 using the autograd-integrated myTorch Library. Since, Autograd1 involved creating Linear layers with autograd support to do backprop, and since Prof. stated that the motivation behind providing students the option to do HW3P1 was to simplify/abstract some of the calculations required for the BPTT and CTCLoss, I've taken a more modular approach to this assignment where:
+An implementation of HW3P1 using the Autograd-integrated myTorch Library. Since, Autograd1 involved creating Linear layers with autograd support to do backprop, and since Prof. stated that the motivation behind providing students the option to do HW3P1 was to simplify/abstract some of the calculations required for the BPTT and CTCLoss, I've taken a more modular approach to this assignment where:
 
 - `RNNCell` is composed of `nn.Linear`'s
 - `GRUCell` is composed of RNNCell's with an optional scale factor (`scale_h`) for the hidden linear transformation.
