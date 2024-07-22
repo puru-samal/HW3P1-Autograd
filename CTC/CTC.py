@@ -379,7 +379,7 @@ class CTCLoss(object):
                 tmp_loss[batch_itr].append(np.array([0.0], dtype=np.float64))
 
                 idx1 = np.index_exp[:input_lengths[batch_itr], batch_itr, extended_symbols[r]]
-                logits_r = self.logits[idx1].copy(order='A')
+                logits_r = self.logits[idx1].copy()
                 self.autograd_engine.add_operation(inputs=[self.logits, np.array(idx1, dtype=object)],
                                                    output=logits_r,
                                                    gradients_to_update=[None, None],
