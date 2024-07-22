@@ -138,6 +138,7 @@ class Autograd:
         #   self.gradient_buffer
         #   2) Inputs with externally tracked gradients: update gradients_to_update
         # NOTE: Make sure the order of gradients align with the order of inputs
+        
             if len(op.inputs) == 1:
                 if op.gradients_to_update[0] is None:
                     self.gradient_buffer.update_param(op.inputs[0], inp_grads)
@@ -150,12 +151,7 @@ class Autograd:
                         self.gradient_buffer.update_param(inp, inp_grads[i])
                     else:
                         op.gradients_to_update[i] += inp_grads[i]
-                    
-            if self.debug:
-                    print(f'post: {op}')
                             
-           
-
     def zero_grad(self):
         """
         Resets gradient buffer and operations list. No need to modify.

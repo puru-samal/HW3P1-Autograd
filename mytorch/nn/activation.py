@@ -98,6 +98,7 @@ class Tanh(Activation):
 
         # TODO Compute forward with primitive operations
         # TODO Add operations to the autograd engine as you go
+        # NOTE: Modification equivalent to HW3P1 modification
         self.state = np.tanh(x)
         self.autograd_engine.add_operation(inputs=[x, self.state], output=self.state,
                                            gradients_to_update=[None, None],

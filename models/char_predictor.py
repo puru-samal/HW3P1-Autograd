@@ -57,7 +57,6 @@ class CharacterPredictor(object):
         # self.projection expects input in the form of batch_size * input_dimension
         # Therefore, reshape the input of self.projection as (1,-1)
         logits = self.projection(hnext)  # TODO
-        logits = logits.reshape(-1,)  # uncomment once code implemented
         return logits, hnext
 
 
@@ -83,7 +82,7 @@ def inference(net, inputs):
     """
     seq_len = inputs.shape[0]
     logits = np.zeros((seq_len, net.num_classes))
-    h_prev_t = np.zeros(net.gru.h)
+    h_prev_t = np.zeros(net.gru.hidden_size)
 
     # This code should not take more than 10 lines.
     for i in range(seq_len):

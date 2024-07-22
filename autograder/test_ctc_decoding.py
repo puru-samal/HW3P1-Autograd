@@ -1,12 +1,9 @@
 import numpy as np
 import sys, os
 import pickle
-
 from test import Test
-
-sys.path.append("CTC")
-
-from CTCDecoding import GreedySearchDecoder, BeamSearchDecoder
+sys.path.append("./")
+from CTC.CTCDecoding import GreedySearchDecoder, BeamSearchDecoder
 
 # DO NOT CHANGE -->
 isTesting = True

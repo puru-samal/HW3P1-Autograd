@@ -42,8 +42,7 @@ class RNNPhonemeClassifier(object):
         """
         for i, rnn_cell in enumerate(self.rnn):
             rnn_cell.init_weights(*rnn_weights[i])
-        self.output_layer.W = linear_weights[0]
-        self.output_layer.b = linear_weights[1]
+        self.output_layer.init_weights(linear_weights[0], linear_weights[1])
     
     def __call__(self, x, h_0=None):
         return self.forward(x, h_0)

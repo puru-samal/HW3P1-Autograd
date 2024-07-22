@@ -68,7 +68,7 @@ def mul_backward(grad_output, a, b):
 def div_backward(grad_output, a, b):
     """Backward for division"""
     a_grad = grad_output / b
-    b_grad =  grad_output * (-a / (b**2.0))
+    b_grad = grad_output * (-a / (b**2.0))
     a_grad = unbroadcast(a_grad, a.shape)
     b_grad = unbroadcast(b_grad, b.shape)
     return a_grad, b_grad 

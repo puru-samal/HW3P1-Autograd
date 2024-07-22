@@ -1,12 +1,9 @@
 import numpy as np
 import sys, os
 import pickle
-
 from test import Test
-
-sys.path.append("CTC")
-
-from CTCDecoding import BeamSearchDecoder
+sys.path.append("./")
+from CTC.CTCDecoding import BeamSearchDecoder
 
 class BeamSearchToyTest(Test):
 	def __init__(self):

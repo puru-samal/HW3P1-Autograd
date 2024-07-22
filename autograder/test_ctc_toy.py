@@ -197,12 +197,14 @@ class CTCToyTest(Test):
         return True
 
     def test_ctc_forward(self):
+        
         # Get curr data
         probs = np.load(os.path.join(data_path, "X.npy"))
         targets = np.load(os.path.join(data_path, "Y.npy"))
         input_lens = np.load(os.path.join(data_path, "X_lens.npy"))
         out_lens = np.load(os.path.join(data_path, "Y_lens.npy"))
 
+        # NOTE: Autograd object must be instantiated and passed
         autograd = autograd_engine.Autograd()
         CTC_user = CTCLoss(autograd, BLANK=0)
         user_loss = CTC_user(probs, targets, input_lens, out_lens)
@@ -222,6 +224,7 @@ class CTCToyTest(Test):
         input_lens = np.load(os.path.join(data_path, "X_lens.npy"))
         out_lens = np.load(os.path.join(data_path, "Y_lens.npy"))
 
+        # NOTE: Autograd object must be instantiated and passed
         autograd = autograd_engine.Autograd(debug=False)
         user_ctc_loss = CTCLoss(autograd, BLANK=0)
         user_loss = user_ctc_loss(probs, targets, input_lens, out_lens)

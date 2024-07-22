@@ -6,50 +6,34 @@ from mytorch.autograd_engine import *
 
 class RNNCell(object):
     """RNN Cell class."""
-    def __init__(self, input_size, hidden_size, autograd_engine):
+    def __init__(self, input_size, hidden_size, autograd_engine, act_fn=Tanh):
+
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.autograd_engine = autograd_engine
 
-        # Activation function for
-        self.activation = Tanh(self.autograd_engine)
-
-        # hidden dimension and input dimension
-        h = self.hidden_size
-        d = self.input_size
+        # Activation function for cell
+        self.activation = act_fn(self.autograd_engine)
 
         # initialize two linear layers
-        self.ih = Linear(d, h, self.autograd_engine)
-        self.hh = Linear(h, h, self.autograd_engine)
-
-        # Weights and biases
-        self.ih.W = np.random.randn(h, d)
-        self.hh.W = np.random.randn(h, h)
-        self.ih.b = np.random.randn(h, 1)
-        self.hh.b = np.random.randn(h, 1)
+        self.ih = Linear(self.input_size, self.hidden_size, self.autograd_engine)
+        self.hh = Linear(self.hidden_size, self.hidden_size, self.autograd_engine)
 
         # Gradients
         self.zero_grad()
         
-
     def init_weights(self, W_ih, W_hh, b_ih, b_hh):
-        self.ih.W = W_ih
-        self.hh.W = W_hh
-        self.ih.b = b_ih
-        self.hh.b = b_hh
+        self.ih.init_weights(W_ih,  b_ih)
+        self.hh.init_weights(W_hh, b_hh)
 
     def zero_grad(self):
-        d = self.input_size
-        h = self.hidden_size
-        self.ih.dW = np.zeros((h, d))
-        self.hh.dW_hh = np.zeros((h, h))
-        self.ih.db = np.zeros(h)
-        self.hh.db = np.zeros(h)
+        self.ih.zero_grad() 
+        self.hh.zero_grad() 
+    
+    def __call__(self, x, h_prev_t, scale_h=None):
+        return self.forward(x, h_prev_t, scale_h)
 
-    def __call__(self, x, h_prev_t):
-        return self.forward(x, h_prev_t)
-
-    def forward(self, x, h_prev_t):
+    def forward(self, x, h_prev_t, scale_h=None):
         """
         RNN Cell forward (single time step).
 
@@ -70,9 +54,24 @@ class RNNCell(object):
         """
         ht = tanh(Wihxt + bih + Whhht−1 + bhh) 
         """
+       
+        i1  = self.ih(x)
+        i2_ = self.hh(h_prev_t)
 
-        i1 = self.ih(x)
-        i2 = self.hh(h_prev_t)
+        # NOTE: Optional scale factor included to make this class 
+        # available for use in GRUCell while computing self.n
+        if scale_h is not None:
+            i2  = scale_h * i2_
+            self.autograd_engine.add_operation(inputs=[scale_h, i2_], output=i2,
+                                               gradients_to_update=[None, None],
+                                               backward_operation=mul_backward)
+        else:
+            i2 = i2_.copy()
+            self.autograd_engine.add_operation(inputs=[i2_], output=i2,
+                                               gradients_to_update=[None],
+                                               backward_operation=identity_backward)
+
+
         i = i1 + i2
         self.autograd_engine.add_operation(inputs=[i1, i2], output=i,
                                            gradients_to_update=[None, None],

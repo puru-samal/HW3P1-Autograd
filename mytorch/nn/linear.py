@@ -14,12 +14,17 @@ class Linear():
         self.b = np.random.uniform(-np.sqrt(1 / in_features),
                                    np.sqrt(1 / in_features),
                                    size=(out_features,))  # just change this to 1-d after implementing broadcasting
+        
         self.dW = np.zeros(self.W.shape)
         self.db = np.zeros(self.b.shape)
         self.momentum_W = np.zeros(self.W.shape)
         self.momentum_b = np.zeros(self.b.shape)
         self.autograd_engine = autograd_engine
     
+    def init_weights(self, W, b):
+        self.W = W
+        self.b = b
+
     def zero_grad(self):
         self.dW = np.zeros(self.W.shape)
         self.db = np.zeros(self.b.shape)
@@ -37,11 +42,8 @@ class Linear():
             Returns:
                 - (np.ndarray), the output of this forward computation.
         """
-        # TODO: Use the primitive operations to calculate the affine transformation
-        #      of the linear layer
 
-        # TODO: Remember to use add_operation to record these operations in
-        #      the autograd engine after each operation
+        # NOTE: Handle batched/unbatched inputs. Possibly include in starter code (?)
         is_batched = np.ndim(x) == 2
         if not is_batched:
             x_internal = np.expand_dims(x, axis=0).copy()
@@ -54,6 +56,11 @@ class Linear():
                                                gradients_to_update=[None],
                                                backward_operation=identity_backward)
 
+        # TODO: Use the primitive operations to calculate the affine transformation
+        #      of the linear layer
+
+        # TODO: Remember to use add_operation to record these operations in
+        #      the autograd engine after each operation
 
         h = x_internal @ self.W.T
         self.autograd_engine.add_operation(inputs=[x_internal, self.W.T], output=h,
