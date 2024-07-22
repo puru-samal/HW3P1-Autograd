@@ -209,7 +209,7 @@ class CTCLoss(object):
         
         # NOTE: Toggle using ctc_loss_backward version 
         # or a version using more primitive operations
-        self.USE_PRIMITIVE = False
+        self.USE_PRIMITIVE = True
         # <---------------------------------------------
 
     def __call__(self, logits, target, input_lengths, target_lengths):
