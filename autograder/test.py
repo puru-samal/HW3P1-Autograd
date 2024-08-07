@@ -2,6 +2,7 @@ import numpy as np
 import traceback
 import json
 
+
 # Test object to be used for other homeworks
 class Test(object):
     def __init__(self):
@@ -28,7 +29,7 @@ class Test(object):
                 return False
         elif test_type == "closeness":
             try:
-                assert np.allclose(user_vals, expected_vals,atol=1e-5)
+                assert np.allclose(user_vals, expected_vals, atol=1e-5)
             except Exception as e:
                 print("Closeness error, your values dont match the expected values.")
                 print("Wrong values for %s" % test_name)
@@ -54,23 +55,31 @@ class Test(object):
 
     def get_test_scores(self):
         return sum(self.scores.values())
-        
-    def run_tests(self, section_title, test, test_score):
-        test_name = section_title.split(' - ')[1]
-        try:
-            self.print_name(section_title)
-            test_outcome = test()
-            self.print_outcome(test_name, test_outcome)
-        except Exception:
-            traceback.print_exc()
-            test_outcome = False
-        
-        if test_outcome != True:
-            self.print_failure(test_name)
-            if test_outcome==False:
-                self.scores[test_name] = 0
+
+    def run_tests(self, section_title, tests, test_score):
+        test_name = section_title.split(" - ")[1]
+        any_passed = False  # Track if any test passes
+
+        # Try running each test and collect outcomes
+        for test in tests:
+            try:
+                self.print_name(section_title)
+                test_outcome = test()
+                self.print_outcome(test_name, test_outcome)
+            except Exception:
+                traceback.print_exc()
+                test_outcome = False
+
+            # Check if the current test passed
+            if test_outcome == True:
+                any_passed = True
+                self.scores[test_name] = test_score
+                break
             else:
-                self.scores[test_name] = test_outcome[1]
-            return False
-        self.scores[test_name] = test_score
+                # Print failure message for the individual test
+                self.print_failure(test_name)
+
+        # After running all tests, check if none passed
+        if not any_passed:
+            self.scores[test_name] = 0
         return True

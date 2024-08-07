@@ -1,9 +1,12 @@
 import numpy as np
 import sys, os
 import pickle
+
 from test import Test
-sys.path.append("./")
-from CTC.CTCDecoding import GreedySearchDecoder, BeamSearchDecoder
+
+sys.path.append("CTC")
+
+from CTCDecoding import GreedySearchDecoder, BeamSearchDecoder
 
 # DO NOT CHANGE -->
 isTesting = True
@@ -15,6 +18,8 @@ EPS = 1e-20
 class SearchTest(Test):
     def __init__(self):
         pass
+        # SEED = 2023
+        # np.random.seed(SEED)
 
     def test_greedy_search(self):
         SEED = 11785
@@ -38,16 +43,16 @@ class SearchTest(Test):
                 assert user_best_path == ref_best_path
             except Exception as e:
                 print("Best path does not match")
-                print("Your best path:    \t", user_best_path)
-                print("Expected best path:\t", ref_best_path)
+                print("Your best path:   ", user_best_path)
+                print("Expected best path:", ref_best_path)
                 return False
 
             try:
                 assert user_score == float(ref_score)
             except Exception as e:
                 print("Best Score does not match")
-                print("Your score:    \t", user_score)
-                print("Expected score:\t", ref_score)
+                print("Your score:    ", user_score)
+                print("Expected score:", ref_score)
                 return False
 
         # Use to save test data for next semester
@@ -75,8 +80,8 @@ class SearchTest(Test):
                 assert BestPath == BestPath_ref
             except Exception as e:
                 print("BestPath does not match!")
-                print("Your best path:    \t", BestPath)
-                print("Expected best path:\t", BestPath_ref)
+                print("Your best path:", BestPath)
+                print("Expected best path:", BestPath_ref)
                 return False
 
             try:

@@ -1,6 +1,6 @@
 import numpy as np
-from .nn.activation import *
-from .nn.linear import *
+from mytorch.nn.activation import *
+from mytorch.nn.linear import *
 from mytorch.rnn_cell import *
 from mytorch.functional import *
 from mytorch.autograd_engine import *
@@ -15,11 +15,17 @@ class GRUCell(object):
         self.hidden_size = hidden_size
         self.autograd_engine = autograd_engine
 
-         # initialize three rnn layers
-        self.r_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid)
-        self.z_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid)
-        self.n_cell = RNNCell(self.input_size, self.hidden_size, self.autograd_engine, act_fn=Tanh)
-        
+        # initialize three rnn layers
+        self.r_cell = RNNCell(
+            self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid
+        )
+        self.z_cell = RNNCell(
+            self.input_size, self.hidden_size, self.autograd_engine, act_fn=Sigmoid
+        )
+        self.n_cell = RNNCell(
+            self.input_size, self.hidden_size, self.autograd_engine, act_fn=Tanh
+        )
+
         # Init Gradients
         self.zero_grad()
 
@@ -37,7 +43,7 @@ class GRUCell(object):
         self.r_cell.zero_grad()
         self.z_cell.zero_grad()
         self.n_cell.zero_grad()
-    
+
     def __call__(self, x, h_prev_t):
         return self.forward(x, h_prev_t)
 
@@ -75,27 +81,41 @@ class GRUCell(object):
 
         # NOTE: h' = (1 - z) * n + z * h
         h1 = 1 - self.z
-        self.autograd_engine.add_operation(inputs=[np.ones_like(self.z), self.z], output=h1,
-                                           gradients_to_update=[None, None],
-                                           backward_operation=sub_backward)
+        self.autograd_engine.add_operation(
+            inputs=[np.ones_like(self.z), self.z],
+            output=h1,
+            gradients_to_update=[None, None],
+            backward_operation=sub_backward,
+        )
         h2 = h1 * self.n
-        self.autograd_engine.add_operation(inputs=[h1, self.n], output=h2,
-                                           gradients_to_update=[None, None],
-                                           backward_operation=mul_backward)
+        self.autograd_engine.add_operation(
+            inputs=[h1, self.n],
+            output=h2,
+            gradients_to_update=[None, None],
+            backward_operation=mul_backward,
+        )
         h3 = self.z * self.hidden
-        self.autograd_engine.add_operation(inputs=[self.z, self.hidden], output=h3,
-                                           gradients_to_update=[None, None],
-                                           backward_operation=mul_backward)
+        self.autograd_engine.add_operation(
+            inputs=[self.z, self.hidden],
+            output=h3,
+            gradients_to_update=[None, None],
+            backward_operation=mul_backward,
+        )
         h_t = h2 + h3
-        self.autograd_engine.add_operation(inputs=[h2, h3], output=h_t,
-                                           gradients_to_update=[None, None],
-                                           backward_operation=add_backward)
-        
+        self.autograd_engine.add_operation(
+            inputs=[h2, h3],
+            output=h_t,
+            gradients_to_update=[None, None],
+            backward_operation=add_backward,
+        )
+
         assert self.x.shape == (self.input_size,)
         assert self.hidden.shape == (self.hidden_size,)
         assert self.r.shape == (self.hidden_size,)
         assert self.z.shape == (self.hidden_size,)
         assert self.n.shape == (self.hidden_size,)
-        assert h_t.shape == (self.hidden_size,) # h_t is the final output of you GRU cell.
+        assert h_t.shape == (
+            self.hidden_size,
+        )  # h_t is the final output of you GRU cell.
 
         return h_t

@@ -4,11 +4,12 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 from test import Test
+
 sys.path.append("./")
-from mytorch import autograd_engine
 from mytorch.rnn_cell import *
 from mytorch.nn.loss import *
 from models.rnn_classifier import *
+
 
 # Reference Pytorch RNN Model
 class ReferenceModel(nn.Module):
@@ -29,173 +30,99 @@ class RNNTest(Test):
     def __init__(self):
         pass
 
-    def rnncell_forward(self, i):
-        # Make pytorch rnn cell and get weights
-        pytorch_rnn_cell = nn.RNNCell(i * 2, i * 3)
-        state_dict = pytorch_rnn_cell.state_dict()
-        W_ih, W_hh = (
-            state_dict["weight_ih"].numpy(),
-            state_dict["weight_hh"].numpy(),
-        )
-        b_ih, b_hh = state_dict["bias_ih"].numpy(), state_dict["bias_hh"].numpy()
-
-        # Set user cell and weights
-        # NOTE: Autograd object must be instantiated and passed
-        # Besides that everything else for this test case is 
-        # equivalent to the non-Autograd version
-        autograd = autograd_engine.Autograd(debug=False)
-        user_cell = RNNCell(i * 2, i * 3, autograd)
-        user_cell.init_weights(W_ih, W_hh, b_ih, b_hh)
-
-        # Get inputs
-        time_steps = i * 2
-        inp = torch.randn(time_steps, i * 2, i * 2)
-        hx = torch.randn(i * 2, i * 3)
-        inp_user = inp.numpy()
-        hx_user = hx.numpy()
-
-        # Loop through inputs
-        for t in range(time_steps):
-            hx = pytorch_rnn_cell(inp[t], hx)
-            hx_user = user_cell(inp_user[t], hx_user)
-            if not np.allclose(hx.detach().numpy(), hx_user, rtol=1e-03):
-                print(f'wrong value for h_prime in rnn cell forward at timestep {t}\n')
-                return False
-    
-        return True
-
     def test_rnncell_forward(self):
         np.random.seed(11785)
         torch.manual_seed(11785)
         # Using i within this loop to vary the inputs
         for i in range(1, 6):
-            # NOTE: Since more that once Autograd instance of the Autograd object cannot be created,
-            # running multiple forward tests causes a RuntimeError. To handle this
-            # my recommended approach is to run each test wrapped in a function. This way all local 
-            # variables including autograd are automatically deleted when the function goes out of scope.
-            result = self.rnncell_forward(i)
-            if result != True:
-                print("Failed GRU Forward Test: %d / %d" % (i, 6))
-                return False
-            else:
-                print("*** passed ***")
 
-        return True
+            # Make pytorch rnn cell and get weights
+            pytorch_rnn_cell = nn.RNNCell(i * 2, i * 3)
+            state_dict = pytorch_rnn_cell.state_dict()
+            W_ih, W_hh = (
+                state_dict["weight_ih"].numpy(),
+                state_dict["weight_hh"].numpy(),
+            )
+            b_ih, b_hh = state_dict["bias_ih"].numpy(), state_dict["bias_hh"].numpy()
 
-    def rnncell_backward(self, i):
-        # Make pytorch rnn cell and get weights
-        pytorch_rnn_cell = nn.RNNCell(i * 2, i * 3)
-        state_dict = pytorch_rnn_cell.state_dict()
-        W_ih, W_hh = (
-            state_dict["weight_ih"].numpy(),
-            state_dict["weight_hh"].numpy(),
-        )
-        b_ih, b_hh = state_dict["bias_ih"].numpy(), state_dict["bias_hh"].numpy()
+            # Set user cell and weights
+            user_cell = RNNCell(i * 2, i * 3)
+            user_cell.init_weights(W_ih, W_hh, b_ih, b_hh)
 
-        # Set user cell and weights
-        autograd = autograd_engine.Autograd(debug=False)
-        user_cell = RNNCell(i * 2, i * 3, autograd)
-        user_cell.init_weights(W_ih, W_hh, b_ih, b_hh)
+            # Get inputs
+            time_steps = i * 2
+            inp = torch.randn(time_steps, i * 2, i * 2)
+            hx = torch.randn(i * 2, i * 3)
+            inp_user = inp.numpy()
+            hx_user = hx.numpy()
 
-        # Get inputs
-        inp = torch.randn(i * 2, i * 2)
-        hx = torch.randn(i * 2, i * 3)
-        inp_user = inp.numpy()
-        hx_user = hx.numpy()
-
-        # Get inputs
-        time_steps = i * 2
-        inp = torch.randn(time_steps, i * 2, i * 2, requires_grad=True)
-        inp_user = inp.detach().numpy()
-        pytorch_hiddens = [torch.randn(i * 2, i * 3, requires_grad=True)]
-        user_hiddens = [pytorch_hiddens[0].detach().numpy()]
-
-        # Loop through inputs
-        for t in range(time_steps):
-            hx = pytorch_rnn_cell(inp[t], pytorch_hiddens[-1])
-
-
-             # Slice input and store in computational graph
-            idx = np.index_exp[t]
-            inp_user_slice = inp_user[idx].copy()
-            autograd.add_operation(inputs=[inp_user, np.array(idx, dtype=object)],
-                                   output=inp_user_slice, 
-                                   gradients_to_update=[None, None],
-                                   backward_operation=slice_backward)
-            hx_user = user_cell(inp_user_slice, user_hiddens[-1])
-
-            pytorch_hiddens.append(hx)
-            user_hiddens.append(hx_user)
-            if not np.allclose(hx.detach().numpy(), hx_user, rtol=1e-03):
-                print(f'wrong value for h_prime in rnn cell forward at timestep {t}\n')
-                return False
-
-        # pytorch rnncell backward
-        pytorch_loss = pytorch_hiddens[-1].sum()
-        pytorch_loss.backward()
-
-        # autograd backward
-        user_loss = np.sum(user_hiddens[-1])
-        autograd.add_operation(inputs=[hx_user], output=user_loss, 
-                            gradients_to_update=[None], backward_operation=sum_backward)
-        autograd.backward(1)
-
-        # NOTE: Getting input gradients is different due to interface and implementation diffrences
-        # NOTE: slice_backward must be implemented!
-        dx, dx_ = autograd.gradient_buffer.get_param(inp_user), inp.grad.detach()
-
-        # NOTE: Getting hidden gradient
-        # Retreived by querying the gradient bufer with the user_hiddens[0] i.e. the initial hidden state sent to the network.
-        dh, dh_ = autograd.gradient_buffer.get_param(user_hiddens[0]), pytorch_hiddens[0].grad.detach().numpy()
-
-        # NOTE: Getting network parameter gradients
-        dW_ih, dW_hh = user_cell.ih.dW, user_cell.hh.dW
-        db_ih, db_hh = user_cell.ih.db, user_cell.hh.db
-        dW_ih_, dW_hh_ = pytorch_rnn_cell.weight_ih.grad.numpy(), pytorch_rnn_cell.weight_hh.grad.numpy()
-        db_ih_, db_hh_ = pytorch_rnn_cell.bias_ih.grad.numpy(), pytorch_rnn_cell.bias_hh.grad.numpy()
-
-        # Verify derivatives
-        if not np.allclose(dx, dx_, rtol=1e-04):
-            print('wrong value for dx in rnn cell backward')
-            return False
-        if not np.allclose(dh, dh_, rtol=1e-04):
-            print('wrong value for dh in rnn cell backward')
-            return False
-        if not np.allclose(dW_ih, dW_ih_, rtol=1e-04):
-            print('wrong value for dW_ih in rnn cell backward')
-            return False
-        if not np.allclose(dW_hh, dW_hh_, rtol=1e-04):
-            print('wrong value for dW_hh in rnn cell backward')
-            return False
-        if not np.allclose(db_ih, db_ih_, rtol=1e-04):
-            print('wrong value for db_ih in rnn cell backward')
-            return False
-        if not np.allclose(db_hh, db_hh_, rtol=1e-04):
-            print('wrong value for db_hh in rnn cell backward')
-            return False
+            # Loop through inputs
+            for t in range(time_steps):
+                hx = pytorch_rnn_cell(inp[t], hx)
+                hx_user = user_cell(inp_user[t], hx_user)
+                assert np.allclose(
+                    hx.detach().numpy(), hx_user, rtol=1e-03
+                ), "wrong value for h_prime in rnn cell forward\n"
 
         return True
 
     def test_rnncell_backward(self):
-         # NOTE: I recommend changing this testcase to more effectively test the autograd implementation.
-        # After looping through each timestep to get model output, a dummy loss is created by summing the 
-        # final output and backpropagating the loss. The input, hidden and network parameter gradients are
-        # then compared to the official pytorch implementation.
+        expected_results = np.load(
+            os.path.join("autograder", "data", "rnncell_backward.npy"),
+            allow_pickle=True,
+        )
+        dx1_, dh1_, dx2_, dh2_, dW_ih_, dW_hh_, db_ih_, db_hh_ = expected_results
 
         np.random.seed(11785)
         torch.manual_seed(11785)
-        # Using i within this loop to vary the inputs
-        for i in range(1, 6):
-            # NOTE: Since more that once Autograd instance of the Autograd object cannot be created,
-            # running multiple forward tests causes a RuntimeError. To handle this
-            # my recommended approach is to run each test wrapped in a function. This way all local 
-            # variables including autograd are automatically deleted when the function goes out of scope.
-            result = self.rnncell_backward(i)
-            if result != True:
-                print("Failed GRU Forward Test: %d / %d" % (i, 6))
-                return False
-            else:
-                print("*** passed ***")
+
+        batch_size = 3
+        input_size = 10
+        hidden_size = 20
+        user_cell = RNNCell(10, 20)
+
+        # Run backward once
+        delta = np.random.randn(batch_size, hidden_size)
+        h = np.random.randn(batch_size, hidden_size)
+        h_prev_l = np.random.randn(batch_size, input_size)
+        h_prev_t = np.random.randn(batch_size, hidden_size)
+        dx1, dh1 = user_cell.backward(delta, h, h_prev_l, h_prev_t)
+
+        # Run backward again
+        delta = np.random.randn(batch_size, hidden_size)
+        h = np.random.randn(batch_size, hidden_size)
+        h_prev_l = np.random.randn(batch_size, input_size)
+        h_prev_t = np.random.randn(batch_size, hidden_size)
+        dx2, dh2 = user_cell.backward(delta, h, h_prev_l, h_prev_t)
+
+        dW_ih, dW_hh = user_cell.dW_ih, user_cell.dW_hh
+        db_ih, db_hh = user_cell.db_ih, user_cell.db_hh
+
+        # Verify derivatives
+        assert np.allclose(
+            dx1, dx1_, rtol=1e-04
+        ), "wrong value for dx in rnn cell backward (first)"
+        assert np.allclose(
+            dx2, dx2_, rtol=1e-04
+        ), "wrong value for dx in rnn cell backward (second)"
+        assert np.allclose(
+            dh1, dh1_, rtol=1e-04
+        ), "wrong value for dh in rnn cell backward (first)"
+        assert np.allclose(
+            dh2, dh2_, rtol=1e-04
+        ), "wrong value for dh in rnn cell backward (second)"
+        assert np.allclose(
+            dW_ih, dW_ih_, rtol=1e-04
+        ), "wrong value for dW_ih in rnn cell backward"
+        assert np.allclose(
+            dW_hh, dW_hh_, rtol=1e-04
+        ), "wrong value for dW_hh in rnn cell backward"
+        assert np.allclose(
+            db_ih, db_ih_, rtol=1e-04
+        ), "wrong value for db_ih in rnn cell backward"
+        assert np.allclose(
+            db_hh, db_hh_, rtol=1e-04
+        ), "wrong value for db_hh in rnn cell backward"
 
         # Use to save test data for next semester
         # results = [dx1, dh1, dx2, dh2, dW_ih, dW_hh, db_ih, db_hh]
@@ -219,25 +146,23 @@ class RNNTest(Test):
 
         # Initialize
         # Reference model
-        rnn_model = ReferenceModel(input_size, 
-                                   hidden_size, 
-                                   output_size, 
-                                   rnn_layers=rnn_layers)
+        rnn_model = ReferenceModel(
+            input_size, hidden_size, output_size, rnn_layers=rnn_layers
+        )
         model_state_dict = rnn_model.state_dict()
-
         # My model
-        autograd = autograd_engine.Autograd(debug=False)
-        my_rnn_model = RNNPhonemeClassifier(input_size, 
-                                            hidden_size, 
-                                            output_size, 
-                                            autograd, 
-                                            num_layers=rnn_layers)
-        rnn_weights = [[
+        my_rnn_model = RNNPhonemeClassifier(
+            input_size, hidden_size, output_size, num_layers=rnn_layers
+        )
+        rnn_weights = [
+            [
                 model_state_dict["rnn.weight_ih_l%d" % l].numpy(),
                 model_state_dict["rnn.weight_hh_l%d" % l].numpy(),
                 model_state_dict["rnn.bias_ih_l%d" % l].numpy(),
                 model_state_dict["rnn.bias_hh_l%d" % l].numpy(),
-            ] for l in range(rnn_layers)]
+            ]
+            for l in range(rnn_layers)
+        ]
         fc_weights = [
             model_state_dict["output.weight"].numpy(),
             model_state_dict["output.bias"].numpy(),
@@ -258,10 +183,9 @@ class RNNTest(Test):
 
         # Verify forward outputs
         print("Testing RNN Classifier Forward...")
-        if not np.allclose(my_out, ref_out, rtol=1e-03):
-            print('wrong value in rnn classifier forward')
-            return False
-        
+        assert np.allclose(
+            my_out, ref_out, rtol=1e-03
+        ), "wrong value in rnn classifier forward"
         # if not self.assertions(my_out, ref_out, 'closeness', 'RNN Classifier Forwrd'): #rtol=1e-03)
         # return 'RNN Forward'
         print("RNN Classifier Forward: PASS")
@@ -279,65 +203,56 @@ class RNNTest(Test):
         }
         dh = ref_init_h.grad
 
-        # my model
-        # NOTE: autograd backward
-        # Backward pass is done differenty from HW3P1 due to mytorch interface diffrence
-        my_criterion = SoftmaxCrossEntropy(autograd)
+        # My model
+        my_criterion = SoftmaxCrossEntropy()
         my_labels_onehot = np.zeros((batch_size, output_size))
         my_labels_onehot[np.arange(batch_size), data_y] = 1.0
-        my_loss = my_criterion(my_labels_onehot, my_out)
-        autograd.backward(1)
-
-        # NOTE: Getting gradients wrt hiddens[0] i.e the initial hidden state
-        # NOTE: Gradients wrt to the hiddens at each timestep is stored in the internal Autograd gradient buffer.
-        # The gradients for a particular input can be retrieved by querying the gradient buffer with the numpy.ndarray input.
-        # Since, my_rnn_model.hiddens[0][t] is fed into the network, the gradient with my_rnn_model.hiddens[0][t] gets what 
-        # would be my_dh[t]. Thus, this requires iterating through all timesteps to get the gradient wrt each timestep which are then 
-        # concatenated for comparison with pytorch's input gradient. 
-        my_dh = []
-        for h in range(len(my_rnn_model.hiddens[0])):
-            my_dh.append(autograd.gradient_buffer.get_param(my_rnn_model.hiddens[0][h]))
-        my_dh = np.array(my_dh)
+        my_loss = my_criterion(my_out, my_labels_onehot).mean()
+        delta = my_criterion.backward()
+        my_dh = my_rnn_model.backward(delta)
 
         # Verify derivative w.r.t. each network parameters
-        # NOTE: Class variable names are diffrent due to implementation change
-        # NOTE: Multiplying PyTorch gradients by batchsize not required
-        if not np.allclose(my_dh, dh.detach().numpy(), rtol=1e-04):
-            print('wrong value for dh in rnn classifier backward')
-            return False
-        
-        if not np.allclose(my_rnn_model.output_layer.dW, grad_dict["output.weight"].detach().numpy(),rtol=1e-03,):
-            print('wrong value for dLdW in rnn classifier backward')
-            return False
-        
-        if not np.allclose(my_rnn_model.output_layer.db.reshape(-1,), grad_dict["output.bias"].detach().numpy()):
-            print('wrong value for dLdb in rnn classifier backward')
-            return False
-        
+        assert np.allclose(
+            my_dh, dh.detach().numpy(), rtol=1e-04
+        ), "wrong value for dh in rnn classifier backward"
+        assert np.allclose(
+            my_rnn_model.output_layer.dLdW,
+            grad_dict["output.weight"].detach().numpy() * batch_size,
+            rtol=1e-03,
+        ), "wrong value for dLdW in rnn classifier backward"
+        assert np.allclose(
+            my_rnn_model.output_layer.dLdb.reshape(
+                -1,
+            ),
+            grad_dict["output.bias"].detach().numpy() * batch_size,
+        ), "wrong value for dLdb in rnn classifier backward"
         for l, rnn_cell in enumerate(my_rnn_model.rnn):
-            if not np.allclose(rnn_cell.ih.dW, grad_dict["rnn.weight_ih_l%d" % l].detach().numpy(), rtol=1e-03,):
-                print('wrong value for dW_ih in rnn classifier backward')
-                return False
-
-            if not np.allclose(rnn_cell.hh.dW, grad_dict["rnn.weight_hh_l%d" % l].detach().numpy(), rtol=1e-03,):
-                print('wrong value for dW_hh in rnn classifier backward')
-                return False
-            
-            if not np.allclose(rnn_cell.ih.db, grad_dict["rnn.bias_ih_l%d" % l].detach().numpy(), rtol=1e-03,):
-                print('wrong value for db_ih in rnn classifier backward')
-                return False
-            
-            if not np.allclose(rnn_cell.hh.db, grad_dict["rnn.bias_hh_l%d" % l].detach().numpy(), rtol=1e-03,):
-                print('wrong value for db_hh in rnn classifier backward')
-                return False
+            assert np.allclose(
+                my_rnn_model.rnn[l].dW_ih,
+                grad_dict["rnn.weight_ih_l%d" % l].detach().numpy(),
+                rtol=1e-03,
+            ), "wrong value for dW_ih in rnn classifier backward"
+            assert np.allclose(
+                my_rnn_model.rnn[l].dW_hh,
+                grad_dict["rnn.weight_hh_l%d" % l].detach().numpy(),
+                rtol=1e-03,
+            ), "wrong value for dW_hh in rnn classifier backward"
+            assert np.allclose(
+                my_rnn_model.rnn[l].db_ih,
+                grad_dict["rnn.bias_ih_l%d" % l].detach().numpy(),
+                rtol=1e-03,
+            ), "wrong value for db_ih in rnn classifier backward"
+            assert np.allclose(
+                my_rnn_model.rnn[l].db_hh,
+                grad_dict["rnn.bias_hh_l%d" % l].detach().numpy(),
+                rtol=1e-03,
+            ), "wrong value for db_hh in rnn classifier backward"
 
         print("RNN Classifier Backward: PASS")
         return True
 
     def gen_test(self):
-        file = os.path.join(
-                    "autograder", "data", "toy_rnncell_backward.npy"
-                )
+        file = os.path.join("autograder", "data", "toy_rnncell_backward.npy")
 
         np.random.seed(11785)
         torch.manual_seed(11785)
@@ -366,7 +281,6 @@ class RNNTest(Test):
 
         expected_results = dx1, dh1, dx2, dh2, dW_ih, dW_hh, db_ih, db_hh
         np.save(file, expected_results)
-
 
     def run_test(self):
         # Test forward

@@ -1,9 +1,12 @@
 import numpy as np
 import sys, os
 import pickle
+
 from test import Test
-sys.path.append("./")
-from CTC.CTCDecoding import BeamSearchDecoder
+
+sys.path.append("CTC")
+
+from CTCDecoding import BeamSearchDecoder
 
 class BeamSearchToyTest(Test):
 	def __init__(self):
@@ -34,10 +37,10 @@ class BeamSearchToyTest(Test):
 		try:
 			assert BestPath == "A"
 		except AssertionError:
-			print(f"Incorrect Best Path\nExpected:A\nPredicted:\t{BestPath}")
+			print(f"Incorrect Best Path\nExpected:A\nPredicted:{BestPath}")
 			return False
 		else:
-			print(f"Correct Best Path\nExpected:A\nPredicted:\t{BestPath}")
+			print(f"Correct Best Path\nExpected:A\nPredicted:{BestPath}")
 
 
 		expected_MergedPathScores = {
@@ -53,9 +56,9 @@ class BeamSearchToyTest(Test):
 			for key in MergedPathScores.keys():
 				assert np.allclose(np.array(MergedPathScores[key]), expected_MergedPathScores[key])
 		except AssertionError:
-			print(f"Incorrect Merged Path Scores\nExpected: \t{expected_MergedPathScores}\nPredicted: \t{MergedPathScores}")
+			print(f"Incorrect Merged Path Scores\nExpected: {expected_MergedPathScores}\nPredicted: {MergedPathScores}")
 			return False
 		else:
-			print(f"Correct Merged Path Scores\nExpected: \t{expected_MergedPathScores}\nPredicted: \t{MergedPathScores}")
+			print(f"Correct Merged Path Scores\nExpected: {expected_MergedPathScores}\nPredicted: {MergedPathScores}")
 
 		return True

@@ -1,10 +1,12 @@
 import numpy as np
 import sys, os
 import pickle
+
 from test import Test
-sys.path.append("./")
-from mytorch import autograd_engine
-from CTC import CTC, CTCLoss
+
+sys.path.append("CTC")
+
+from CTC.CTC import CTC, CTCLoss
 
 data_path = os.path.join("autograder", "data")
 ref_data_path = os.path.join("autograder", "data", "ctc_ref_data")
@@ -92,8 +94,12 @@ class CTCTest(Test):
             target = targets[b, : out_lens[b]]
 
             user_S_ext, user_Skip_Connect = CTC_user.extend_target_with_blank(target)
-            user_alpha = CTC_user.get_forward_probs(logit, user_S_ext, user_Skip_Connect)
-            user_beta = CTC_user.get_backward_probs(logit, user_S_ext, user_Skip_Connect)
+            user_alpha = CTC_user.get_forward_probs(
+                logit, user_S_ext, user_Skip_Connect
+            )
+            user_beta = CTC_user.get_backward_probs(
+                logit, user_S_ext, user_Skip_Connect
+            )
             user_gamma = CTC_user.get_posterior_probs(user_alpha, user_beta)
 
             ref_alpha = ref_alpha_ls[b]
@@ -134,9 +140,7 @@ class CTCTest(Test):
         input_lens = np.load(os.path.join(data_path, "X_lens.npy"))
         out_lens = np.load(os.path.join(data_path, "Y_lens.npy"))
 
-        # NOTE: Autograd object must be instantiated and passed
-        autograd = autograd_engine.Autograd()
-        CTC_user = CTCLoss(autograd, BLANK=0)
+        CTC_user = CTCLoss(BLANK=0)
         user_loss = CTC_user(probs, targets, input_lens, out_lens)
 
         ref_loss = np.load(os.path.join(ref_data_path, "ref_loss.npy"))
@@ -153,12 +157,9 @@ class CTCTest(Test):
         input_lens = np.load(os.path.join(data_path, "X_lens.npy"))
         out_lens = np.load(os.path.join(data_path, "Y_lens.npy"))
 
-        # NOTE: Autograd object must be instantiated and passed
-        autograd = autograd_engine.Autograd(debug=False)
-        CTC_user = CTCLoss(autograd, BLANK=0)
+        CTC_user = CTCLoss(BLANK=0)
         user_loss = CTC_user(probs, targets, input_lens, out_lens)
-        autograd.backward(1)
-        user_dy = autograd.gradient_buffer.get_param(CTC_user.logits)
+        user_dy = CTC_user.backward()
 
         ref_dy = np.load(os.path.join(ref_data_path, "ref_dy.npy"))
 

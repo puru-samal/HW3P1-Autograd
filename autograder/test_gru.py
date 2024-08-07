@@ -7,13 +7,15 @@ import torch
 import torch.nn as nn
 import sys, os, pdb
 from test import Test
+
 # Append paths and run
-sys.path.append("./")
-from mytorch import autograd_engine
-from mytorch.gru_cell import *
-from mytorch.nn.loss import *
-from mytorch.nn.linear import *
-from models.char_predictor import *
+sys.path.append("mytorch")
+from gru_cell import *
+from nn.loss import *
+from nn.linear import *
+
+sys.path.append("models")
+import char_predictor
 
 # DO NOT CHANGE -->
 EPS = 1e-20
@@ -24,38 +26,6 @@ SEED = 2022
 ############################################################################################
 ################################   Section 3 - GRU    ######################################
 ############################################################################################
-
-# Reference Pytorch GRU Model
-class ReferenceModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
-        super(ReferenceModel, self).__init__()
-        self.gru = nn.GRUCell(input_size, hidden_size)
-        self.projection = nn.Linear(hidden_size, num_classes)
-        self.hidden_size = hidden_size  # TODO
-        self.input_size = input_size
-        self.num_classes = num_classes
-
-    def forward(self, x, h):
-        """
-        A pass through one time step of the input
-        """
-        hnext = self.gru(x, h)  # TODO
-        logits = self.projection(hnext)  # TODO
-        return logits, hnext
-    
-    def inference(self, inputs):
-        seq_len = inputs.shape[0]
-        logits = torch.zeros((seq_len, self.num_classes))
-        h_prev_t = torch.zeros(self.hidden_size)
-
-        with torch.no_grad():
-            for i in range(seq_len):
-                x = inputs[i]
-                proj, hnext = self.forward(x, h_prev_t)
-                logits[i] = proj
-                h_prev_t = hnext
-
-        return logits 
 
 
 class GRUTest(Test):
@@ -97,10 +67,10 @@ class GRUTest(Test):
         )
 
         # user
-        # NOTE: Autograd object must be instantiated and passed
-        autograd = autograd_engine.Autograd()
-        user_gru_cell = GRUCell(input_dim, hidden_dim, autograd)
-        user_gru_cell.init_weights(Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh)
+        user_gru_cell = GRUCell(input_dim, hidden_dim)
+        user_gru_cell.init_weights(
+            Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh
+        )
         user_result = user_gru_cell.forward(data[idx], hidden)
 
         if not self.assertions(user_result, pytorch_result, "type", "h_t"):
@@ -182,19 +152,16 @@ class GRUTest(Test):
         )
 
         # user
-        # NOTE: Autograd object must be instantiated and passed
-        # NOTE: Since I'm using linear to simplify some operation tracking
-        # the inputs to the user_gru_cell needs to be batched
-        autograd = autograd_engine.Autograd(debug=False)
-        user_gru_cell = GRUCell(input_dim, hidden_dim, autograd)
-        user_output_layer = Linear(hidden_dim, output_dim, autograd)
-        user_gru_cell.init_weights(Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh)
-        user_input, user_hidden = data[idx], hidden
-        user_result = user_gru_cell.forward(user_input, user_hidden)
+        user_gru_cell = GRUCell(input_dim, hidden_dim)
+        user_output_layer = Linear(hidden_dim, output_dim)
+        user_gru_cell.init_weights(
+            Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh
+        )
+        user_result = user_gru_cell.forward(data[idx], hidden)
 
         if not self.assertions(user_result, pytorch_result_np, "type", "h_t"):
             return False
-        if not self.assertions(np.squeeze(user_result), pytorch_result_np, "shape", "h_t"):
+        if not self.assertions(user_result, pytorch_result_np, "shape", "h_t"):
             return False
         if not self.assertions(user_result, pytorch_result_np, "closeness", "h_t"):
             return False
@@ -211,69 +178,25 @@ class GRUTest(Test):
         py_dh = py_hidden.grad.detach().numpy()
 
         # user
-        # NOTE: Forward through Linear
-        user_output_layer.init_weights(W, np.squeeze(b,1))
+        
+        user_output_layer.W = W
+        user_output_layer.b = b
+        user_result = user_result.reshape(-1, 1).T
+        
         user_output = user_output_layer.forward(user_result)
 
-        # NOTE: Forward through SoftmaxCrossEntropy
-        my_criterion = SoftmaxCrossEntropy(autograd)
+        my_criterion = SoftmaxCrossEntropy()
         my_labels_onehot = np.zeros((batch_size, output_dim))
         my_labels_onehot[np.arange(batch_size), target] = 1.0
-        user_output_cpy = np.expand_dims(user_output, axis=0).copy()
-        autograd.add_operation(inputs=[user_output, np.array([0])], output=user_output_cpy,
-                               gradients_to_update=[None, None],
-                               backward_operation=expand_dims_backward)
-        my_loss = my_criterion.forward(my_labels_onehot, user_output_cpy)
+        my_loss = my_criterion.forward(user_output.reshape(1, -1), my_labels_onehot).mean()
 
-        # NOTE: Backward and gradient retreival needs to be changed 
-        # for autograd implementation
-        autograd.backward(1)
+        delta = my_criterion.backward()
+        #user_output_layer.x.reshape(1, -1)
+        delta = user_output_layer.backward(delta)
+        my_dx, my_dh = user_gru_cell.backward(delta.squeeze(0))
 
-        # Get gradients wrt to input and hidden
-        my_dx = autograd.gradient_buffer.get_param(user_input)
-        my_dh = autograd.gradient_buffer.get_param(user_hidden)
-
-        dWnx = pytorch_gru_cell.weight_ih.grad[hidden_dim * 2 : hidden_dim * 3]
-        if not self.assertions(user_gru_cell.n_cell.ih.dW, dWnx, "closeness", "dWnx"):
-            return False
-        dbnx = pytorch_gru_cell.bias_ih.grad[hidden_dim * 2 : hidden_dim * 3]
-        if not self.assertions(user_gru_cell.n_cell.ih.db, dbnx, "closeness", "dbin"):
-            return False
-
-        dWnh = pytorch_gru_cell.weight_hh.grad[hidden_dim * 2 : hidden_dim * 3]
-        if not self.assertions(user_gru_cell.n_cell.hh.dW, dWnh, "closeness", "dWnh"):
-            return False
-        dbnh = pytorch_gru_cell.bias_hh.grad[hidden_dim * 2 : hidden_dim * 3]
-        if not self.assertions(user_gru_cell.n_cell.hh.db, dbnh, "closeness", "dbhn"):
-            return False
-
-        dWzx = pytorch_gru_cell.weight_ih.grad[hidden_dim : hidden_dim * 2]
-        if not self.assertions(user_gru_cell.z_cell.ih.dW, dWzx, "closeness", "dWzx"):
-            return False
-        dbzx = pytorch_gru_cell.bias_ih.grad[hidden_dim : hidden_dim * 2]
-        if not self.assertions(user_gru_cell.z_cell.ih.db, dbzx, "closeness", "dbiz"):
-            return False
-
-        dWzh = pytorch_gru_cell.weight_hh.grad[hidden_dim : hidden_dim * 2]
-        if not self.assertions(user_gru_cell.z_cell.hh.dW, dWzh, "closeness", "dWzh"):
-            return False
-        dbzh = pytorch_gru_cell.bias_hh.grad[hidden_dim : hidden_dim * 2]
-        if not self.assertions(user_gru_cell.z_cell.hh.db, dbzh, "closeness", "dbhz"):
-            return False
-        
-        dWrx = pytorch_gru_cell.weight_ih.grad[:hidden_dim]
-        if not self.assertions(user_gru_cell.r_cell.ih.dW, dWrx, "closeness", "dWrx"):
-           return False
-        dbrx = pytorch_gru_cell.bias_ih.grad[:hidden_dim]
-        if not self.assertions(user_gru_cell.r_cell.ih.db, dbrx, "closeness", "dbir"):
-           return False
-
-        dWrh = pytorch_gru_cell.weight_hh.grad[:hidden_dim]
-        if not self.assertions(user_gru_cell.r_cell.hh.dW, dWrh, "closeness", "dWrh"):
-            return False
-        dbrh = pytorch_gru_cell.bias_hh.grad[:hidden_dim]
-        if not self.assertions(user_gru_cell.r_cell.hh.db, dbrh, "closeness", "dbhr"):
-            return False
+        # my_dx = my_dx.squeeze(0)
+        # my_dh = my_dh.squeeze(0)
 
         if not self.assertions(my_dx, py_dx, "type", "dx_t"):
             return False
@@ -288,6 +211,50 @@ class GRUTest(Test):
             return False
         if not self.assertions(my_dh, py_dh, "closeness", "dh_t"):
            return False
+
+        # dWs
+        dWrx = pytorch_gru_cell.weight_ih.grad[:hidden_dim]
+        dWzx = pytorch_gru_cell.weight_ih.grad[hidden_dim : hidden_dim * 2]
+        dWnx = pytorch_gru_cell.weight_ih.grad[hidden_dim * 2 : hidden_dim * 3]
+
+        dWrh = pytorch_gru_cell.weight_hh.grad[:hidden_dim]
+        dWzh = pytorch_gru_cell.weight_hh.grad[hidden_dim : hidden_dim * 2]
+        dWnh = pytorch_gru_cell.weight_hh.grad[hidden_dim * 2 : hidden_dim * 3]
+
+        if not self.assertions(user_gru_cell.dWrx, dWrx, "closeness", "dWrx"):
+           return False
+        if not self.assertions(user_gru_cell.dWzx, dWzx, "closeness", "dWzx"):
+            return False
+        if not self.assertions(user_gru_cell.dWnx, dWnx, "closeness", "dWnx"):
+            return False
+        if not self.assertions(user_gru_cell.dWrh, dWrh, "closeness", "dWrh"):
+            return False
+        if not self.assertions(user_gru_cell.dWzh, dWzh, "closeness", "dWzh"):
+            return False
+        if not self.assertions(user_gru_cell.dWnh, dWnh, "closeness", "dWnh"):
+            return False
+
+        # dbs
+        dbrx = pytorch_gru_cell.bias_ih.grad[:hidden_dim]
+        dbzx = pytorch_gru_cell.bias_ih.grad[hidden_dim : hidden_dim * 2]
+        dbnx = pytorch_gru_cell.bias_ih.grad[hidden_dim * 2 : hidden_dim * 3]
+
+        dbrh = pytorch_gru_cell.bias_hh.grad[:hidden_dim]
+        dbzh = pytorch_gru_cell.bias_hh.grad[hidden_dim : hidden_dim * 2]
+        dbnh = pytorch_gru_cell.bias_hh.grad[hidden_dim * 2 : hidden_dim * 3]
+
+        if not self.assertions(user_gru_cell.dbrx, dbrx, "closeness", "dbir"):
+           return False
+        if not self.assertions(user_gru_cell.dbzx, dbzx, "closeness", "dbiz"):
+            return False
+        if not self.assertions(user_gru_cell.dbnx, dbnx, "closeness", "dbin"):
+            return False
+        if not self.assertions(user_gru_cell.dbrh, dbrh, "closeness", "dbhr"):
+            return False
+        if not self.assertions(user_gru_cell.dbzh, dbzh, "closeness", "dbhz"):
+            return False
+        if not self.assertions(user_gru_cell.dbnh, dbnh, "closeness", "dbhn"):
+            return False
         # <--------------------------------------
 
         return True
@@ -342,6 +309,11 @@ class GRUTest(Test):
         np.random.seed(SEED)
         torch.manual_seed(SEED)
 
+        ref_outputs = np.load(
+            os.path.join("autograder", "data", "gru_inference.npy"),
+            allow_pickle=True,
+        )
+
         FEATURE_DIM = 7
         HIDDEN_DIM = 4
         NUM_CLASSES = 3
@@ -349,35 +321,39 @@ class GRUTest(Test):
         SEQUENCE = "aaabbbbccc"
         inputs = self.create_input_data(SEQUENCE, FEATURE_DIM)
 
-        # Pytorch Net
-        py_net = ReferenceModel(FEATURE_DIM, HIDDEN_DIM, NUM_CLASSES)
-        
-        # Get network init parameters
-        W_ih, W_hh = py_net.gru.weight_ih.detach().numpy(), py_net.gru.weight_hh.detach().numpy()
-        b_ih, b_hh = py_net.gru.bias_ih.detach().numpy(), py_net.gru.bias_hh.detach().numpy()
-        proj_W, proj_b = py_net.projection.weight.detach().numpy(), py_net.projection.bias.detach().numpy()
+        Wrx = np.random.randn(HIDDEN_DIM, FEATURE_DIM)
+        Wzx = np.random.randn(HIDDEN_DIM, FEATURE_DIM)
+        Wnx = np.random.randn(HIDDEN_DIM, FEATURE_DIM)
+        Wrh = np.random.randn(HIDDEN_DIM, HIDDEN_DIM)
+        Wzh = np.random.randn(HIDDEN_DIM, HIDDEN_DIM)
+        Wnh = np.random.randn(HIDDEN_DIM, HIDDEN_DIM)
 
-        Wrx, Wzx, Wnx = np.split(W_ih, 3, axis=0)
-        Wrh, Wzh, Wnh = np.split(W_hh, 3, axis=0)
-        brx, bzx, bnx = np.split(b_ih, 3, axis=0)
-        brh, bzh, bnh = np.split(b_hh, 3, axis=0)
+        brx = np.random.randn(HIDDEN_DIM)
+        bzx = np.random.randn(HIDDEN_DIM)
+        bnx = np.random.randn(HIDDEN_DIM)
+        brh = np.random.randn(HIDDEN_DIM)
+        bzh = np.random.randn(HIDDEN_DIM)
+        bnh = np.random.randn(HIDDEN_DIM)
 
         # Load weights into student implementation
-        # NOTE: Autograd object must be instantiated and passed
-        autograd = autograd_engine.Autograd()
-        student_net = CharacterPredictor(FEATURE_DIM, HIDDEN_DIM, NUM_CLASSES, autograd)
-        student_net.init_rnn_weights(Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh)
-        student_net.projection.W, student_net.projection.b = proj_W, proj_b
+        student_net = char_predictor.CharacterPredictor(FEATURE_DIM, HIDDEN_DIM, NUM_CLASSES)
+        student_net.init_rnn_weights(
+            Wrx, Wzx, Wnx, Wrh, Wzh, Wnh, brx, bzx, bnx, brh, bzh, bnh
+        )
 
-        # NOTE: Run inference for both models
-        ref_outputs = py_net.inference(torch.FloatTensor(inputs))
-        student_outputs = inference(student_net, inputs)
+        student_outputs = char_predictor.inference(student_net, inputs)
 
-        if not self.assertions(student_outputs, ref_outputs.detach().numpy(), "type", "gru inference output"):
+        if not self.assertions(
+            student_outputs, ref_outputs, "type", "gru inference output"
+        ):
             return False
-        if not self.assertions(student_outputs, ref_outputs, "shape", "gru inference output"):
+        if not self.assertions(
+            student_outputs, ref_outputs, "shape", "gru inference output"
+        ):
             return False
-        if not self.assertions(student_outputs, ref_outputs, "closeness", "gru inference output"):
+        if not self.assertions(
+            student_outputs, ref_outputs, "closeness", "gru inference output"
+        ):
             return False
 
         # Use to save test data for next semester
